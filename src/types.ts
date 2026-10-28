@@ -117,4 +117,17 @@ export interface VisitBooking {
   timeSlot: string;
   status: 'confirmed' | 'pending';
   bookedAt: string;
+  userId?: string;
+  userEmail?: string;
 }
+
+export interface AppUser {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: 'student' | 'owner';
+  phone?: string;
+  college?: string;
+  createdAt?: string;
+}
+

@@ -9,11 +9,15 @@ import {
   Users, 
   ShieldCheck, 
   CheckCircle2, 
-  SlidersHorizontal 
+  SlidersHorizontal,
+  CloudCheck,
+  Database
 } from 'lucide-react';
 
 import { College, Room, RoommateProfile, FilterState, VisitBooking } from './types';
 import { COLLEGES, INITIAL_ROOMS, INITIAL_ROOMMATES } from './data/mockData';
+import { roomService } from './services/roomService';
+import { AuthProvider, useAuth } from './context/AuthContext';
 
 import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
@@ -26,10 +30,13 @@ import { BudgetCalculatorModal } from './components/BudgetCalculatorModal';
 import { CompareModal } from './components/CompareModal';
 import { PostRoomModal } from './components/PostRoomModal';
 import { WishlistDrawer } from './components/WishlistDrawer';
+import { AuthModal } from './components/AuthModal';
 import { Footer } from './components/Footer';
 
-export const App: React.FC = () => {
-  // --- Persistent Storage State ---
+const MainApp: React.FC = () => {
+  const { isFirebaseActive } = useAuth();
+
+  // --- Rooms & Roommates State (seeded from Firestore or local fallback) ---
   const [rooms, setRooms] = useState<Room[]>(() => {
     const saved = localStorage.getItem('apnaroom_rooms');
     return saved ? JSON.parse(saved) : INITIAL_ROOMS;
@@ -51,6 +58,7 @@ export const App: React.FC = () => {
   });
 
   const [comparedRoomIds, setComparedRoomIds] = useState<string[]>([]);
+  const [loadingData, setLoadingData] = useState(false);
 
   // --- Navigation & Tab State ---
   const [activeTab, setActiveTab] = useState<'rooms' | 'roommates'>('rooms');
@@ -79,23 +87,37 @@ export const App: React.FC = () => {
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isPostRoomOpen, setIsPostRoomOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
 
-  // Sync to localStorage
+  // Load rooms and roommates from Firestore on initial mount
   useEffect(() => {
-    localStorage.setItem('apnaroom_rooms', JSON.stringify(rooms));
-  }, [rooms]);
+    const loadCloudData = async () => {
+      setLoadingData(true);
+      try {
+        const [cloudRooms, cloudMates] = await Promise.all([
+          roomService.fetchRooms(),
+          roomService.fetchRoommates(),
+        ]);
+        if (cloudRooms && cloudRooms.length > 0) {
+          setRooms(cloudRooms);
+        }
+        if (cloudMates && cloudMates.length > 0) {
+          setRoommates(cloudMates);
+        }
+      } catch (err) {
+        console.error('Error loading data from cloud service:', err);
+      } finally {
+        setLoadingData(false);
+      }
+    };
 
-  useEffect(() => {
-    localStorage.setItem('apnaroom_roommates', JSON.stringify(roommates));
-  }, [roommates]);
+    loadCloudData();
+  }, []);
 
+  // Sync Wishlist to localStorage
   useEffect(() => {
     localStorage.setItem('apnaroom_wishlist', JSON.stringify(wishlistIds));
   }, [wishlistIds]);
-
-  useEffect(() => {
-    localStorage.setItem('apnaroom_bookings', JSON.stringify(bookings));
-  }, [bookings]);
 
   // Handlers
   const handleFilterChange = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
@@ -143,42 +165,40 @@ export const App: React.FC = () => {
     setComparedRoomIds((prev) => prev.filter((id) => id !== roomId));
   };
 
-  const handleAddRoom = (newRoom: Room) => {
+  const handleAddRoom = async (newRoom: Room) => {
+    // Save to Firestore and local state
     setRooms((prev) => [newRoom, ...prev]);
+    await roomService.addRoom(newRoom);
   };
 
-  const handleAddRoommate = (newProfile: RoommateProfile) => {
+  const handleAddRoommate = async (newProfile: RoommateProfile) => {
     setRoommates((prev) => [newProfile, ...prev]);
+    await roomService.addRoommate(newProfile);
   };
 
-  const handleConfirmBooking = (booking: VisitBooking) => {
+  const handleConfirmBooking = async (booking: VisitBooking) => {
     setBookings((prev) => [booking, ...prev]);
+    await roomService.saveBooking(booking);
   };
 
   // Filtered & Sorted Rooms
   const filteredRooms = useMemo(() => {
     return rooms.filter((room) => {
-      // College Filter
       if (filters.collegeId !== 'all' && room.collegeId !== filters.collegeId) {
         return false;
       }
-      // Budget
       if (room.pricePerMonth > filters.maxBudget) {
         return false;
       }
-      // Room Type
       if (filters.roomType !== 'all' && room.roomType !== filters.roomType) {
         return false;
       }
-      // Gender
       if (filters.gender !== 'any' && room.gender !== filters.gender && room.gender !== 'co-ed') {
         return false;
       }
-      // Max Distance
       if (room.distanceKm > filters.maxDistanceKm) {
         return false;
       }
-      // Essential Amenities
       if (filters.foodRequired && room.foodOption !== 'included') {
         return false;
       }
@@ -246,7 +266,18 @@ export const App: React.FC = () => {
         onOpenCompare={() => setIsCompareOpen(true)}
         onOpenCalculator={() => setIsCalculatorOpen(true)}
         onOpenPostRoom={() => setIsPostRoomOpen(true)}
+        onOpenAuth={() => setIsAuthOpen(true)}
       />
+
+      {/* Cloud Status Pill */}
+      <div className="bg-slate-900 text-white text-[11px] py-1.5 px-4 text-center font-medium border-b border-slate-800 flex items-center justify-center gap-2">
+        <Database className="w-3.5 h-3.5 text-amber-400" />
+        <span>
+          {isFirebaseActive 
+            ? '🔥 Cloud Firestore & Firebase Auth Connected (Real-time Cloud Sync)' 
+            : '⚡ Firebase Ready (Local Simulation Active — Add .env keys to connect your live Firebase project)'}
+        </span>
+      </div>
 
       {/* Main Tab Content */}
       <main className="flex-1">
@@ -341,7 +372,7 @@ export const App: React.FC = () => {
                 </div>
               )}
 
-              {/* Student Callout Banner: Looking for flatmate or have a room to sublet */}
+              {/* Student Callout Banner */}
               <div className="mt-12 bg-gradient-to-r from-brand-50 to-indigo-50 border border-brand-200/80 rounded-3xl p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
                 <div className="space-y-1.5 text-center md:text-left">
                   <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-brand-700 bg-brand-100/60 px-2.5 py-0.5 rounded-full">
@@ -352,7 +383,7 @@ export const App: React.FC = () => {
                     Vacating your college room or looking for a replacement flatmate?
                   </h3>
                   <p className="text-xs text-slate-600 max-w-xl">
-                    Post your room or flat share in 2 minutes. Zero broker charges, 100% direct student connect.
+                    Post your room or flat share in 2 minutes. Cloud stored in Firebase, zero broker charges, 100% direct student connect.
                   </p>
                 </div>
 
@@ -389,7 +420,7 @@ export const App: React.FC = () => {
       {/* Footer */}
       <Footer />
 
-      {/* Floating Compare Pill if rooms selected */}
+      {/* Floating Compare Pill */}
       {comparedRoomIds.length > 0 && !isCompareOpen && (
         <div className="fixed bottom-5 right-5 z-40 animate-bounce">
           <button
@@ -447,7 +478,20 @@ export const App: React.FC = () => {
         onScheduleVisit={(r) => setScheduleVisitRoom(r)}
       />
 
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+      />
+
     </div>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
   );
 };
 

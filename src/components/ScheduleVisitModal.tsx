@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Room, VisitBooking } from '../types';
+import { useAuth } from '../context/AuthContext';
 
 interface ScheduleVisitModalProps {
   room: Room | null;
@@ -27,14 +28,24 @@ export const ScheduleVisitModal: React.FC<ScheduleVisitModalProps> = ({
 }) => {
   if (!room) return null;
 
+  const { user } = useAuth();
   const [dateOption, setDateOption] = useState<'today' | 'tomorrow' | 'custom'>('today');
   const [customDate, setCustomDate] = useState('');
   const [timeSlot, setTimeSlot] = useState('Afternoon (2:00 PM - 5:00 PM)');
-  const [studentName, setStudentName] = useState('');
-  const [studentPhone, setStudentPhone] = useState('');
-  const [studentCollege, setStudentCollege] = useState(room.collegeName);
+  const [studentName, setStudentName] = useState(user?.displayName || '');
+  const [studentPhone, setStudentPhone] = useState(user?.phone || '');
+  const [studentCollege, setStudentCollege] = useState(user?.college || room.collegeName);
   const [isSuccess, setIsSuccess] = useState(false);
   const [bookingRef, setBookingRef] = useState('');
+
+  React.useEffect(() => {
+    if (user) {
+      if (!studentName) setStudentName(user.displayName);
+      if (!studentPhone && user.phone) setStudentPhone(user.phone);
+      if (!studentCollege && user.college) setStudentCollege(user.college);
+    }
+  }, [user]);
+
 
   const todayStr = new Date().toISOString().split('T')[0];
   const tomorrowObj = new Date();
@@ -67,7 +78,10 @@ export const ScheduleVisitModal: React.FC<ScheduleVisitModalProps> = ({
       timeSlot,
       status: 'confirmed',
       bookedAt: new Date().toISOString(),
+      userId: user?.uid,
+      userEmail: user?.email,
     };
+
 
     // Confetti celebration
     try {

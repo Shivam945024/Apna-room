@@ -16,8 +16,10 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { College, Room, RoomType, GenderType } from '../types';
+import { useAuth } from '../context/AuthContext';
 
 interface PostRoomModalProps {
+
   isOpen: boolean;
   onClose: () => void;
   colleges: College[];
@@ -50,13 +52,25 @@ export const PostRoomModal: React.FC<PostRoomModalProps> = ({
   const [hasAttachedBathroom, setHasAttachedBathroom] = useState(true);
   const [hasWashingMachine, setHasWashingMachine] = useState(true);
   const [hasROWater, setHasROWater] = useState(true);
+  const { user } = useAuth();
   const [gateClosingTime, setGateClosingTime] = useState('11:00 PM');
   const [electricityCharges, setElectricityCharges] = useState('Included in rent');
-  const [ownerName, setOwnerName] = useState('');
-  const [ownerPhone, setOwnerPhone] = useState('');
-  const [ownerWhatsApp, setOwnerWhatsApp] = useState('');
+  const [ownerName, setOwnerName] = useState(user?.displayName || '');
+  const [ownerPhone, setOwnerPhone] = useState(user?.phone || '');
+  const [ownerWhatsApp, setOwnerWhatsApp] = useState(user?.phone?.replace(/\D/g, '') || '');
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+
+  React.useEffect(() => {
+    if (user) {
+      if (!ownerName) setOwnerName(user.displayName);
+      if (!ownerPhone && user.phone) {
+        setOwnerPhone(user.phone);
+        setOwnerWhatsApp(user.phone.replace(/\D/g, ''));
+      }
+    }
+  }, [user]);
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
